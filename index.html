@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>酸氨基葡萄糖片 · 评论数据分析看板</title>
+<script src="echarts.min.js"></script>
+<script src="echarts-wordcloud.min.js"></script>
+<style>
+  :root {
+    --primary: #6d5ef7;
+    --primary2: #8b5cf6;
+    --purple: #a855f7;
+    --blue: #3b82f6;
+    --green: #22c55e;
+    --green-bg: #ecfdf5;
+    --amber: #f59e0b;
+    --amber-bg: #fffbeb;
+    --red: #ef4444;
+    --red-bg: #fef2f2;
+    --gray: #94a3b8;
+    --gray-bg: #f1f5f9;
+    --text: #1e293b;
+    --text-sub: #64748b;
+    --border: #e2e8f0;
+    --card: #ffffff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+    background: linear-gradient(160deg, #f6f7ff 0%, #f3f0ff 45%, #f8f5ff 100%);
+    color: var(--text); min-height: 100vh;
+  }
+  .header {
+    background: linear-gradient(120deg, #4338ca 0%, #6d5ef7 40%, #8b5cf6 70%, #a855f7 100%);
+    color: #fff; padding: 26px 36px; display: flex; justify-content: space-between;
+    align-items: center; flex-wrap: wrap; gap: 12px;
+    box-shadow: 0 4px 24px rgba(109, 94, 247, .35);
+  }
+  .header h1 { font-size: 24px; font-weight: 700; letter-spacing: .5px; text-shadow: 0 1px 4px rgba(0,0,0,.15); }
+  .header .sub { font-size: 13px; opacity: .9; margin-top: 5px; }
+  .header .badge {
+    background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.35);
+    border-radius: 20px; padding: 7px 18px; font-size: 13px; backdrop-filter: blur(4px);
+  }
+  .tabs {
+    display: flex; gap: 6px; padding: 0 32px; position: sticky; top: 0; z-index: 50;
+    background: rgba(255,255,255,.85); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    padding: 15px 20px; font-size: 14.5px; cursor: pointer; color: var(--text-sub);
+    border-bottom: 3px solid transparent; user-select: none; transition: color .2s;
+  }
+  .tab:hover { color: var(--primary); }
+  .tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+  .page { display: none; padding: 26px 36px 40px; max-width: 1440px; margin: 0 auto; }
+  .page.active { display: block; animation: fadeIn .35s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .kpi-card {
+    background: var(--card); border-radius: 14px; padding: 16px 18px;
+    box-shadow: 0 2px 10px rgba(109,94,247,.08); border: 1px solid var(--border);
+    border-top: 3px solid var(--primary); position: relative; overflow: hidden;
+  }
+  .kpi-card::after {
+    content: ""; position: absolute; right: -20px; top: -20px; width: 70px; height: 70px;
+    border-radius: 50%; background: linear-gradient(135deg, rgba(109,94,247,.12), rgba(168,85,247,.06));
+  }
+  .kpi-card .label { font-size: 12.5px; color: var(--text-sub); margin-bottom: 7px; }
+  .kpi-card .value { font-size: 28px; font-weight: 700; background: linear-gradient(120deg, var(--primary), var(--purple)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .kpi-card .value small { font-size: 13px; font-weight: 400; }
+  .kpi-card .hint { font-size: 11.5px; color: var(--text-sub); margin-top: 5px; }
+  .kpi-card.good { border-top-color: var(--green); }
+  .kpi-card.good .value { background: linear-gradient(120deg, #16a34a, #22c55e); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .kpi-card.warn { border-top-color: var(--amber); }
+  .kpi-card.warn .value { background: linear-gradient(120deg, #d97706, #f59e0b); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .kpi-card.bad { border-top-color: var(--red); }
+  .kpi-card.bad .value { background: linear-gradient(120deg, #dc2626, #ef4444); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .card {
+    background: var(--card); border-radius: 14px; padding: 18px 20px;
+    box-shadow: 0 2px 10px rgba(109,94,247,.07); border: 1px solid var(--border);
+  }
+  .card h3 { font-size: 15px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .card h3::before { content: ""; width: 4px; height: 16px; border-radius: 2px; display: inline-block;
+    background: linear-gradient(180deg, var(--primary), var(--purple)); }
+  .chart { width: 100%; height: 310px; }
+  .chart.tall { height: 360px; }
+  .chart.short { height: 250px; }
+  .insight-box {
+    background: linear-gradient(120deg, #eef2ff, #f5f3ff); border-left: 4px solid var(--primary);
+    border-radius: 10px; padding: 15px 20px; margin-bottom: 16px; font-size: 13.5px; line-height: 2;
+  }
+  .insight-box strong { color: var(--primary); }
+  .table-wrap { overflow-x: auto; }
+  table.ov-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .ov-table th, .ov-table td { padding: 9px 11px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .ov-table th { background: linear-gradient(120deg, #f5f3ff, #eef2ff); color: #4338ca; font-weight: 600; white-space: nowrap; }
+  .ov-table td.sample { color: var(--text-sub); font-size: 12px; line-height: 1.6; max-width: 320px; }
+  .ov-table tr:hover td { background: #faf9ff; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .badge.good { background: var(--green-bg); color: #16a34a; }
+  .badge.mid { background: var(--amber-bg); color: #d97706; }
+  .badge.bad { background: var(--red-bg); color: #dc2626; }
+  .badge.info { background: #eef2ff; color: var(--primary); }
+  .badge.gray { background: var(--gray-bg); color: var(--gray); }
+  .review-list { display: flex; flex-direction: column; gap: 9px; max-height: 320px; overflow-y: auto; padding-right: 4px; }
+  .review-item { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; font-size: 13px; line-height: 1.7; background: #faf9ff; }
+  .review-item .meta { font-size: 12px; color: var(--text-sub); margin-bottom: 4px; }
+  .footer { text-align: center; color: var(--text-sub); font-size: 12px; padding: 22px; }
+  @media (max-width: 1000px) { .grid2, .grid3 { grid-template-columns: 1fr; } .page { padding: 16px; } .tabs { padding: 0 12px; overflow-x: auto; } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>💊 酸氨基葡萄糖片 · 评论数据分析看板</h1>
+    <div class="sub"><a href="https://detail.tmall.com/item.htm?abbucket=11&id=631978355881" target="_blank" style="color:#fff;text-decoration:underline;opacity:.95">🔗 商品链接：detail.tmall.com/item.htm?id=631978355881</a></div>
+  </div>
+  <div class="badge">分析师：小曾 · 数据版</div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchPage('overview', this)">📊 总览</div>
+  <div class="tab" onclick="switchPage('sentiment', this)">💬 情感分析</div>
+  <div class="tab" onclick="switchPage('sku', this)">📦 商品维度</div>
+  <div class="tab" onclick="switchPage('time', this)">🕐 时间维度</div>
+  <div class="tab" onclick="switchPage('portrait', this)">👤 用户画像</div>
+</div>
+
+<!-- ================= 页1 总览 ================= -->
+<div class="page active" id="page-overview">
+  <div class="kpi-row">
+    <div class="kpi-card"><div class="label">总评论数</div><div class="value" id="kpi-total">-</div><div class="hint">2024-08 ~ 2026-08</div></div>
+    <div class="kpi-card good"><div class="label">真实好评率</div><div class="value" id="kpi-good-rate">-<small>%</small></div><div class="hint">仅统计真实内容评论</div></div>
+    <div class="kpi-card"><div class="label">平台模板好评</div><div class="value" id="kpi-tpl">-<small>条</small></div><div class="hint">占 <span id="kpi-tpl-rate">-</span>%，无文字内容</div></div>
+    <div class="kpi-card warn"><div class="label">中评</div><div class="value" id="kpi-mid">-<small>条</small></div><div class="hint">保留/待观察型意见</div></div>
+    <div class="kpi-card bad"><div class="label">差评</div><div class="value" id="kpi-bad">-<small>条</small></div><div class="hint">需重点关注</div></div>
+    <div class="kpi-card"><div class="label">复购信号</div><div class="value" id="kpi-rep">-<small>条</small></div><div class="hint">评论提到回购/复购/续购</div></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card"><h3>情感结构分布（含模板好评对比）</h3><div id="ov-pie" class="chart" data-chart="ov-pie"></div></div>
+    <div class="card"><h3>月度评论量 &amp; 真实好评率走势（2024-08 ~ 2026-08）</h3><div id="ov-trend" class="chart tall" data-chart="ov-trend"></div></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card"><h3>好评点 TOP（真实好评提到最多的方面）</h3><div id="ov-good-theme" class="chart" data-chart="ov-good-theme"></div></div>
+    <div class="card"><h3>差评归因 TOP（中差评"坏在哪"）</h3><div id="ov-bad-reason" class="chart" data-chart="ov-bad-reason"></div></div>
+  </div>
+
+  <div class="insight-box" id="ov-insights"></div>
+</div>
+
+<!-- ================= 页2 情感分析 ================= -->
+<div class="page" id="page-sentiment">
+  <div class="grid2">
+    <div class="card"><h3>真实好评词云（高频关键词）</h3><div id="sn-wc-good" class="chart" data-chart="sn-wc-good"></div></div>
+    <div class="card"><h3>中差评词云（问题关键词）</h3><div id="sn-wc-bad" class="chart" data-chart="sn-wc-bad"></div></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h3>好评点明细（好评里夸什么）</h3><div class="table-wrap" id="sn-good-table"></div></div>
+    <div class="card"><h3>差评点明细（中差评里骂什么）</h3><div class="table-wrap" id="sn-bad-table"></div></div>
+  </div>
+  <div class="card"><h3>矛盾点发现：一条评论里"某方面好、某方面坏"（共现）</h3>
+    <div id="sn-cooccur"></div>
+  </div>
+</div>
+
+<!-- ================= 页3 商品维度 ================= -->
+<div class="page" id="page-sku">
+  <div class="kpi-row">
+    <div class="kpi-card"><div class="label">规格种类（归一化）</div><div class="value" id="sku-k-spec">-</div></div>
+    <div class="kpi-card"><div class="label">最热规格</div><div class="value" id="sku-k-top">-</div></div>
+    <div class="kpi-card good"><div class="label">口碑最佳规格</div><div class="value" id="sku-k-best">-</div></div>
+    <div class="kpi-card bad"><div class="label">差评最集中规格</div><div class="value" id="sku-k-worst">-</div></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h3>SKU 规格销量分布</h3><div id="sku-dist" class="chart" data-chart="sku-dist"></div></div>
+    <div class="card"><h3>SKU × 情感热力图</h3><div id="sku-heat" class="chart tall" data-chart="sku-heat"></div></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h3>各规格口碑排行（真实好评率 / 差评数）</h3><div class="table-wrap" id="sku-rate-table"></div></div>
+    <div class="card"><h3>促销后缀曝光 TOP（SKU 名引流词）</h3><div id="sku-promo" class="chart" data-chart="sku-promo"></div></div>
+  </div>
+</div>
+
+<!-- ================= 页4 时间维度 ================= -->
+<div class="page" id="page-time">
+  <div class="grid2">
+    <div class="card"><h3>月度评论构成堆叠（模板好评 / 真实好评 / 中评 / 差评）</h3><div id="tm-stack" class="chart tall" data-chart="tm-stack"></div></div>
+    <div class="card"><h3>月度真实好评率（% ，虚线为两年平均）</h3><div id="tm-rate" class="chart tall" data-chart="tm-rate"></div></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h3>一周内评价分布（评价活跃日）</h3><div id="tm-weekday" class="chart" data-chart="tm-weekday"></div></div>
+    <div class="card"><h3>复购信号月度趋势</h3><div id="tm-rep" class="chart" data-chart="tm-rep"></div></div>
+  </div>
+  <div class="insight-box" id="tm-insights"></div>
+</div>
+
+<!-- ================= 页5 用户画像 ================= -->
+<div class="page" id="page-portrait">
+  <div class="grid3">
+    <div class="card"><h3>规格偏好画像（按购买盒数）</h3><div id="pt-spec" class="chart short" data-chart="pt-spec"></div></div>
+    <div class="card"><h3>购买场景画像（文本关键词）</h3><div id="pt-scene" class="chart short" data-chart="pt-scene"></div></div>
+    <div class="card"><h3>关注点分群（用户最在意什么）</h3><div id="pt-focus" class="chart short" data-chart="pt-focus"></div></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h3>购买场景代表评论</h3><div id="pt-scene-samples"></div></div>
+    <div class="card"><h3>复购信号代表评论（口碑价值用户）</h3><div id="pt-rep-samples"></div></div>
+  </div>
+  <div class="insight-box" id="pt-insights"></div>
+</div>
+
+<div class="footer"></div>
+
+<script>
+const DATA = {"meta": {"source": "酸氨基葡萄糖片.xlsx", "generated": "2026-08-12", "total": 5000, "valid": 4970}, "kpi": {"total": 5000, "template": 3685, "template_rate": 73.7, "good": 1280, "mid": 16, "bad": 19, "real_total": 1315, "real_good_rate": 97.3, "overall_good_rate": 99.3, "real_rate": 99.4, "repurchase": 163, "avg_len": 18.7}, "sentiment_pie": [{"name": "真实好评", "value": 1280}, {"name": "中评", "value": 16}, {"name": "差评", "value": 19}, {"name": "模板好评(无内容)", "value": 3685}], "good_themes": [{"theme": "效果显著", "count": 271, "rate": 21.2, "samples": ["氨糖作为一种常见的保健品成分，我在日常保健中也有所接触和使用。首先,氨糖的使用体验非常令人满意。它通常被添加到各种保健品中，如关节保健食品或", "之前在医院开过，用了一段时间了，感觉很好用，趁着淘宝搞活动又下单了，实力推荐下： 九力这款盐酸氨基葡萄糖片很适合关节不适人群！老人家久坐、上", "吃这个九力氨糖片很久了，一开始是在药店买的，但是不太方便经常要去买，现在基本都在阿里健康买，快捷方便，第二天就到了。过了30岁，经常爬山爬楼"]}, {"theme": "物流发货", "count": 221, "rate": 17.3, "samples": ["宝贝收到了，快递速度很快，包装也很仔细。打开一看，质量非常好，细节处理得也很到位。穿上身，非常合身，料子也很舒适。很喜欢这个款式，颜色也很好", "**宝贝收到了，非常满意！** 质量比想象中还要好，做工精细，和卖家描述的一模一样，没有色差也没有异味。发货速度超快，包装也很用心严实，一点", "**宝贝收到了，非常满意！** 质量比想象中还要好，做工精细，和卖家描述的一模一样，没有色差也没有异味。发货速度超快，包装也很用心严实，一点"]}, {"theme": "复购回购", "count": 204, "rate": 15.9, "samples": ["给妈妈来买的这个氨糖软骨素，前段时间妈妈摔了一跤，去医院拍了片没伤到骨头，但是提示膝关节老年退行性病变，就想着给她买点氨糖补充一下，朋友推荐", "超爱周末爬山徒步，经常负重走山野石阶，下山膝盖总是酸胀发紧，走久了关节咔咔响，一度担心没法继续登山。被朋友安利了九力盐酸氨基葡萄糖片，坚持吃", "五星推荐正大九力盐酸氨基葡萄糖片！60 片 1 瓶装分量充足，正大老牌药企值得信赖，OTC 药品级氨糖含量实在，修护关节、缓解膝盖酸痛效果看"]}, {"theme": "价格优惠", "count": 192, "rate": 15.0, "samples": ["宝贝收到了，快递速度很快，包装也很仔细。打开一看，质量非常好，细节处理得也很到位。穿上身，非常合身，料子也很舒适。很喜欢这个款式，颜色也很好", "吃这个九力氨糖片很久了，一开始是在药店买的，但是不太方便经常要去买，现在基本都在阿里健康买，快捷方便，第二天就到了。过了30岁，经常爬山爬楼", "**宝贝收到了，非常满意！** 质量比想象中还要好，做工精细，和卖家描述的一模一样，没有色差也没有异味。发货速度超快，包装也很用心严实，一点"]}, {"theme": "品质正品", "count": 164, "rate": 12.8, "samples": ["宝贝收到了，快递速度很快，包装也很仔细。打开一看，质量非常好，细节处理得也很到位。穿上身，非常合身，料子也很舒适。很喜欢这个款式，颜色也很好", "给妈妈来买的这个氨糖软骨素，前段时间妈妈摔了一跤，去医院拍了片没伤到骨头，但是提示膝关节老年退行性病变，就想着给她买点氨糖补充一下，朋友推荐", "**宝贝收到了，非常满意！** 质量比想象中还要好，做工精细，和卖家描述的一模一样，没有色差也没有异味。发货速度超快，包装也很用心严实，一点"]}, {"theme": "包装效期", "count": 105, "rate": 8.2, "samples": ["宝贝收到了，快递速度很快，包装也很仔细。打开一看，质量非常好，细节处理得也很到位。穿上身，非常合身，料子也很舒适。很喜欢这个款式，颜色也很好", "给妈妈来买的这个氨糖软骨素，前段时间妈妈摔了一跤，去医院拍了片没伤到骨头，但是提示膝关节老年退行性病变，就想着给她买点氨糖补充一下，朋友推荐", "**宝贝收到了，非常满意！** 质量比想象中还要好，做工精细，和卖家描述的一模一样，没有色差也没有异味。发货速度超快，包装也很用心严实，一点"]}, {"theme": "服用口感", "count": 35, "rate": 2.7, "samples": ["吃这个九力氨糖片很久了，一开始是在药店买的，但是不太方便经常要去买，现在基本都在阿里健康买，快捷方便，第二天就到了。过了30岁，经常爬山爬楼", "超爱周末爬山徒步，经常负重走山野石阶，下山膝盖总是酸胀发紧，走久了关节咔咔响，一度担心没法继续登山。被朋友安利了九力盐酸氨基葡萄糖片，坚持吃", "这款氨糖效果很不错，专门养护关节，膝盖疼、久坐关节僵硬吃它很对症。九力大品牌值得信赖，药片剂量合适，服用方便，坚持一段时间关节肿痛缓解很多，"]}, {"theme": "客服服务", "count": 34, "rate": 2.7, "samples": ["宝贝收到了，快递速度很快，包装也很仔细。打开一看，质量非常好，细节处理得也很到位。穿上身，非常合身，料子也很舒适。很喜欢这个款式，颜色也很好", "**宝贝收到了，非常满意！** 质量比想象中还要好，做工精细，和卖家描述的一模一样，没有色差也没有异味。发货速度超快，包装也很用心严实，一点", "**宝贝收到了，非常满意！** 质量比想象中还要好，做工精细，和卖家描述的一模一样，没有色差也没有异味。发货速度超快，包装也很用心严实，一点"]}], "bad_reasons": [{"reason": "效果不佳", "count": 11, "rate": 31.4, "samples": ["特别不满意的一点是买贵了，不知道效果怎样，效果好贵就贵了，最怕是贵又没效果", "不知道，好不好用。吃一阶段看看吧。价格不便宜，240片。220元左右。", "生产日期还行，药效目前没感觉，等之后再看看吧"]}, {"reason": "物流慢丢件", "count": 1, "rate": 2.9, "samples": ["物流垃圾，早上就到了网点到第二天还不派送，找了几次客服说帮催促就是不解决，还是找的官方客服立马送了，网页显示下单就送氨糖软骨素贴也没有送。"]}, {"reason": "价格问题", "count": 1, "rate": 2.9, "samples": ["特别不满意的一点是买贵了，不知道效果怎样，效果好贵就贵了，最怕是贵又没效果"]}, {"reason": "客服售后", "count": 1, "rate": 2.9, "samples": ["太垃圾的**商家，发出来的货先是数量不对，规格也不对，找商家理论，居然***的不承认是自己发的货！**，是不是自己卖假药不敢承认了，后经淘宝"]}, {"reason": "品质质疑", "count": 1, "rate": 2.9, "samples": ["假货无疑"]}, {"reason": "副作用不适", "count": 0, "rate": 0.0, "samples": []}, {"reason": "包装破损", "count": 0, "rate": 0.0, "samples": []}], "cooccur": [{"good": "价格优惠", "bad": "效果不佳", "count": 1}, {"good": "品质正品", "bad": "物流慢丢件", "count": 1}, {"good": "物流发货", "bad": "物流慢丢件", "count": 1}, {"good": "客服服务", "bad": "物流慢丢件", "count": 1}, {"good": "包装效期", "bad": "效果不佳", "count": 1}, {"good": "价格优惠", "bad": "客服售后", "count": 1}], "monthly": [{"month": "2024-08", "count": 129, "good": 24, "mid": 1, "bad": 0, "template": 104, "real_rate": 96.0}, {"month": "2024-09", "count": 203, "good": 39, "mid": 1, "bad": 1, "template": 162, "real_rate": 95.1}, {"month": "2024-10", "count": 280, "good": 55, "mid": 0, "bad": 0, "template": 225, "real_rate": 100.0}, {"month": "2024-11", "count": 297, "good": 73, "mid": 1, "bad": 3, "template": 220, "real_rate": 94.8}, {"month": "2024-12", "count": 177, "good": 33, "mid": 1, "bad": 0, "template": 143, "real_rate": 97.1}, {"month": "2025-01", "count": 186, "good": 46, "mid": 0, "bad": 0, "template": 140, "real_rate": 100.0}, {"month": "2025-02", "count": 206, "good": 41, "mid": 0, "bad": 3, "template": 162, "real_rate": 93.2}, {"month": "2025-03", "count": 250, "good": 49, "mid": 1, "bad": 1, "template": 199, "real_rate": 96.1}, {"month": "2025-04", "count": 252, "good": 41, "mid": 2, "bad": 1, "template": 208, "real_rate": 93.2}, {"month": "2025-05", "count": 304, "good": 65, "mid": 1, "bad": 0, "template": 238, "real_rate": 98.5}, {"month": "2025-06", "count": 295, "good": 54, "mid": 3, "bad": 0, "template": 238, "real_rate": 94.7}, {"month": "2025-07", "count": 199, "good": 38, "mid": 0, "bad": 0, "template": 161, "real_rate": 100.0}, {"month": "2025-08", "count": 245, "good": 30, "mid": 0, "bad": 1, "template": 214, "real_rate": 96.8}, {"month": "2025-09", "count": 116, "good": 46, "mid": 1, "bad": 2, "template": 67, "real_rate": 93.9}, {"month": "2025-10", "count": 99, "good": 40, "mid": 1, "bad": 0, "template": 58, "real_rate": 97.6}, {"month": "2025-11", "count": 179, "good": 46, "mid": 0, "bad": 2, "template": 131, "real_rate": 95.8}, {"month": "2025-12", "count": 33, "good": 29, "mid": 0, "bad": 0, "template": 4, "real_rate": 100.0}, {"month": "2026-01", "count": 133, "good": 30, "mid": 0, "bad": 0, "template": 103, "real_rate": 100.0}, {"month": "2026-02", "count": 141, "good": 29, "mid": 0, "bad": 0, "template": 112, "real_rate": 100.0}, {"month": "2026-03", "count": 226, "good": 52, "mid": 1, "bad": 1, "template": 172, "real_rate": 96.3}, {"month": "2026-04", "count": 189, "good": 55, "mid": 0, "bad": 1, "template": 133, "real_rate": 98.2}, {"month": "2026-05", "count": 252, "good": 68, "mid": 1, "bad": 1, "template": 182, "real_rate": 97.1}, {"month": "2026-06", "count": 338, "good": 185, "mid": 0, "bad": 0, "template": 153, "real_rate": 100.0}, {"month": "2026-07", "count": 215, "good": 103, "mid": 1, "bad": 1, "template": 110, "real_rate": 98.1}, {"month": "2026-08", "count": 56, "good": 9, "mid": 0, "bad": 1, "template": 46, "real_rate": 90.0}], "weekday": [{"name": "周一", "value": 755}, {"name": "周二", "value": 725}, {"name": "周三", "value": 697}, {"name": "周四", "value": 699}, {"name": "周五", "value": 747}, {"name": "周六", "value": 683}, {"name": "周日", "value": 694}], "sku_dist": [{"name": "1盒", "value": 1626}, {"name": "2盒", "value": 1320}, {"name": "3盒", "value": 1074}, {"name": "4盒", "value": 958}, {"name": "5盒+", "value": 22}], "sku_heat": {"skus": ["1盒", "2盒", "3盒", "4盒", "5盒+"], "types": ["真实好评", "中评", "差评", "模板好评(无内容)"], "matrix": [[534, 4, 10, 1078], [279, 5, 3, 1033], [237, 2, 1, 834], [227, 5, 5, 721], [3, 0, 0, 19]]}, "sku_rate": [{"sku": "1盒", "total": 1626, "real_rate": 97.4, "bad_n": 10}, {"sku": "2盒", "total": 1320, "real_rate": 97.2, "bad_n": 3}, {"sku": "3盒", "total": 1074, "real_rate": 98.8, "bad_n": 1}, {"sku": "4盒", "total": 958, "real_rate": 95.8, "bad_n": 5}, {"sku": "5盒+", "total": 22, "real_rate": 100.0, "bad_n": 0}], "promo": [{"name": "OTC国药准字", "value": 923}, {"name": "疗程装", "value": 849}, {"name": "大促推荐", "value": 675}, {"name": "基础疗程装", "value": 447}, {"name": "OTC认证 药监局过审", "value": 263}, {"name": "基础装", "value": 221}, {"name": "体验装", "value": 143}, {"name": "单疗程装", "value": 137}, {"name": "优惠装", "value": 134}, {"name": "大促囤货装", "value": 116}], "repurchase": {"count": 163, "samples": ["之前在医院开过，用了一段时间了，感觉很好用，趁着淘宝搞活动又下单了，实力推荐下： 九力这款盐酸氨基葡萄糖片很适合关节不适人群！老人家久坐、上下楼梯膝盖酸痛坚持吃一段时间明显缓解，而且肩颈腰椎手腕都适用，吃完肿胀疼痛感减轻，关节活动灵活不少，现在都当做日常保养、预防骨关节炎来服用了，之前吃过其他品牌的都没这个效果好，满分好评！！！", "给妈妈来买的这个氨糖软骨素，前段时间妈妈摔了一跤，去医院拍了片没伤到骨头，但是提示膝关节老年退行性病变，就想着给她买点氨糖补充一下，朋友推荐的买这款，国药准字的疗效比较稳定，效果也好，正大九力也是老品牌了，阿里健康大药房购买比较放心，日期还算可以，查了追溯码是正品，希望多做活的，效果好的话会再来回购的！", "超爱周末爬山徒步，经常负重走山野石阶，下山膝盖总是酸胀发紧，走久了关节咔咔响，一度担心没法继续登山。被朋友安利了九力盐酸氨基葡萄糖片，坚持吃了快两个月，这次长线海岸线徒步全程负重翻山，膝盖居然没往日那种酸痛感！小小绿色药片很好吞咽，每天按时吃很方便，会一直回购守护我的膝盖！", "五星推荐正大九力盐酸氨基葡萄糖片！60 片 1 瓶装分量充足，正大老牌药企值得信赖，OTC 药品级氨糖含量实在，修护关节、缓解膝盖酸痛效果看得见。长期吃养护软骨，改善关节僵硬弹响，价格实惠性价比高，物流快包装完整，正品无疑，家中常备护关节好物，已经推荐给亲友！", "我在当地实体店一直购买这款九力氨糖！我从不敢在直播间购买药品，对入口的食物我还是很严谨的，观望多时了，经过深思熟虑果断下单，收到货眼前一亮，真实可信，有幸在你店淘到真品，感恩遇见！值得信赖，值得购买！还会回购别的产品的！祝商家生意兴隆👍", "买过两次 这次是回购 追溯码验证过了 值得信赖 比实体店便宜很多 非常满意的一次购物 物流快才两天就收到了 商家还贴心的送了小礼品 太暖心了 以后还会回购 祝老板生意兴隆财源滚滚"], "trend": [{"month": "2024-08", "count": 3}, {"month": "2024-09", "count": 7}, {"month": "2024-10", "count": 8}, {"month": "2024-11", "count": 8}, {"month": "2024-12", "count": 4}, {"month": "2025-01", "count": 7}, {"month": "2025-02", "count": 4}, {"month": "2025-03", "count": 4}, {"month": "2025-04", "count": 6}, {"month": "2025-05", "count": 6}, {"month": "2025-06", "count": 7}, {"month": "2025-07", "count": 6}, {"month": "2025-08", "count": 3}, {"month": "2025-09", "count": 7}, {"month": "2025-10", "count": 4}, {"month": "2025-11", "count": 5}, {"month": "2025-12", "count": 1}, {"month": "2026-01", "count": 2}, {"month": "2026-02", "count": 3}, {"month": "2026-03", "count": 7}, {"month": "2026-04", "count": 10}, {"month": "2026-05", "count": 9}, {"month": "2026-06", "count": 23}, {"month": "2026-07", "count": 17}, {"month": "2026-08", "count": 2}]}, "portrait": {"scene": [{"name": "关节疼痛困扰", "count": 295, "samples": ["氨糖作为一种常见的保健品成分，我在日常保健中也有所接触和使用。首先,氨糖的使用体验非常令人满意。它通常被添加到各种保健品", "之前在医院开过，用了一段时间了，感觉很好用，趁着淘宝搞活动又下单了，实力推荐下： 九力这款盐酸氨基葡萄糖片很适合关节不适"]}, {"name": "送长辈", "count": 116, "samples": ["之前在医院开过，用了一段时间了，感觉很好用，趁着淘宝搞活动又下单了，实力推荐下： 九力这款盐酸氨基葡萄糖片很适合关节不适", "给妈妈来买的这个氨糖软骨素，前段时间妈妈摔了一跤，去医院拍了片没伤到骨头，但是提示膝关节老年退行性病变，就想着给她买点氨"]}, {"name": "医生推荐", "count": 81, "samples": ["氨糖作为一种常见的保健品成分，我在日常保健中也有所接触和使用。首先,氨糖的使用体验非常令人满意。它通常被添加到各种保健品", "之前在医院开过，用了一段时间了，感觉很好用，趁着淘宝搞活动又下单了，实力推荐下： 九力这款盐酸氨基葡萄糖片很适合关节不适"]}, {"name": "自用保健", "count": 8, "samples": ["太垃圾的**商家，发出来的货先是数量不对，规格也不对，找商家理论，居然***的不承认是自己发的货！**，是不是自己卖假药", "上年纪后一动关节就咔咔响，医生说得定期补充氨糖，推荐了九力，自己在阿里买更便宜，是正品没有副作用，会坚持吃。"]}], "focus": [{"name": "效果导向型", "count": 400, "rate": 8.0}, {"name": "价格敏感型", "count": 244, "rate": 4.9}, {"name": "物流敏感型", "count": 162, "rate": 3.3}, {"name": "品质谨慎型", "count": 143, "rate": 2.9}], "spec_type": [{"name": "尝鲜型(1盒)", "value": 1626}, {"name": "标准型(2-3盒)", "value": 2394}, {"name": "深度疗程型(4盒+)", "value": 980}]}, "wordcloud": {"good": [{"name": "效果", "value": 320}, {"name": "关节", "value": 174}, {"name": "推荐", "value": 100}, {"name": "膝盖", "value": 99}, {"name": "有效", "value": 94}, {"name": "回购", "value": 92}, {"name": "便宜", "value": 91}, {"name": "正品", "value": 89}, {"name": "物流", "value": 84}, {"name": "价格", "value": 79}, {"name": "包装", "value": 72}, {"name": "很快", "value": 71}, {"name": "缓解", "value": 59}, {"name": "医生", "value": 52}, {"name": "发货", "value": 51}, {"name": "服用", "value": 49}, {"name": "疼痛", "value": 49}, {"name": "老人", "value": 46}, {"name": "继续", "value": 32}, {"name": "质量", "value": 31}, {"name": "实惠", "value": 27}, {"name": "放心", "value": 25}, {"name": "优惠", "value": 23}, {"name": "快递", "value": 22}, {"name": "品质", "value": 20}, {"name": "客服", "value": 18}, {"name": "划算", "value": 17}, {"name": "完好", "value": 16}, {"name": "改善", "value": 16}, {"name": "国药", "value": 15}, {"name": "态度", "value": 15}, {"name": "OTC", "value": 14}, {"name": "胶囊", "value": 9}, {"name": "好吞", "value": 4}, {"name": "父亲", "value": 4}, {"name": "正规", "value": 2}, {"name": "母亲", "value": 2}, {"name": "无味", "value": 1}], "bad": [{"name": "没效果", "value": 5}, {"name": "垃圾", "value": 5}, {"name": "客服", "value": 4}, {"name": "贵", "value": 3}, {"name": "没感觉", "value": 3}, {"name": "失望", "value": 2}, {"name": "物流", "value": 2}, {"name": "太差", "value": 1}, {"name": "后悔", "value": 1}, {"name": "退货", "value": 1}, {"name": "假货", "value": 1}, {"name": "慢", "value": 1}, {"name": "包装", "value": 1}, {"name": "难受", "value": 1}, {"name": "退款", "value": 1}]}, "len_dist": [{"name": "1-10字", "value": 417}, {"name": "11-20字", "value": 4024}, {"name": "21-40字", "value": 310}, {"name": "40字以上", "value": 219}], "samples": {"good": ["氨糖作为一种常见的保健品成分，我在日常保健中也有所接触和使用。首先,氨糖的使用体验非常令人满意。它通常被添加到各种保健品中，如关节保健食品或钙片等。在使用过程中，我并未出现任何不适反应，说明其安全性较高。其次，氨糖的优点在于其对关节健康的潜在益处。一些研究表明，氨糖有助于维护关节软骨的健康，缓解关节疼痛。总体而言，氨糖作为一种保健品成分，其安全性和可能的健康益处使其值得推荐。然而，任何保健品都不能替代医生的专业建议，使用前最好咨询专业意见。", "宝贝收到了，快递速度很快，包装也很仔细。打开一看，质量非常好，细节处理得也很到位。穿上身，非常合身，料子也很舒适。很喜欢这个款式，颜色也很好看，非常适合夏天穿。买到这么好的商品，很幸运！谢谢卖家的耐心和热情服务！这次购买的宝贝，给我带来了非常大的惊喜！从下单到收到货，整个过程都非常顺利，而且速度非常快。打开包裹后，发现宝贝的质量非常好，面料和做工都非常精细。卖家还送了一些小礼物，非常贴心。这个价格买到这么好的商品，真的是超值！", "之前在医院开过，用了一段时间了，感觉很好用，趁着淘宝搞活动又下单了，实力推荐下： 九力这款盐酸氨基葡萄糖片很适合关节不适人群！老人家久坐、上下楼梯膝盖酸痛坚持吃一段时间明显缓解，而且肩颈腰椎手腕都适用，吃完肿胀疼痛感减轻，关节活动灵活不少，现在都当做日常保养、预防骨关节炎来服用了，之前吃过其他品牌的都没这个效果好，满分好评！！！", "给妈妈来买的这个氨糖软骨素，前段时间妈妈摔了一跤，去医院拍了片没伤到骨头，但是提示膝关节老年退行性病变，就想着给她买点氨糖补充一下，朋友推荐的买这款，国药准字的疗效比较稳定，效果也好，正大九力也是老品牌了，阿里健康大药房购买比较放心，日期还算可以，查了追溯码是正品，希望多做活的，效果好的话会再来回购的！", "吃这个九力氨糖片很久了，一开始是在药店买的，但是不太方便经常要去买，现在基本都在阿里健康买，快捷方便，第二天就到了。过了30岁，经常爬山爬楼梯都觉得膝盖很痛，吃这个氨糖真的可以缓解，而且价格很实惠，买一瓶60片可以吃一个月，一天才吃2片很方便。其他朋友吃胶囊的每天一大把吃，有点麻烦。现在都买这个了。", "超爱周末爬山徒步，经常负重走山野石阶，下山膝盖总是酸胀发紧，走久了关节咔咔响，一度担心没法继续登山。被朋友安利了九力盐酸氨基葡萄糖片，坚持吃了快两个月，这次长线海岸线徒步全程负重翻山，膝盖居然没往日那种酸痛感！小小绿色药片很好吞咽，每天按时吃很方便，会一直回购守护我的膝盖！"], "mid": ["刚开始吃以为是一瓶60粒，结果是一盒两瓶，一瓶30粒，两瓶60粒。两瓶刚好吃一个月。看了一下，一般一个半月为一个疗程。试一下，看效果怎么样。", "刚吃不久，疗效还有待观察。只是明显觉得没有60粒药。数量不对。", "比线下优惠，吃了一个月目前没啥感觉呢，在吃一段时间看看吧", "生产日期还行，药效目前没感觉，等之后再看看吧", "给父母买的，回购了好几次，效果还行吧。", "膝盖疼,吃了几天加上贴好像没什么效果"], "bad": ["太垃圾的**商家，发出来的货先是数量不对，规格也不对，找商家理论，居然***的不承认是自己发的货！**，是不是自己卖假药不敢承认了，后经淘宝平台介入强行同意退货退款，可惜老子把假药扔了，便宜了你们这**商家，这点钱给***买治癌的药，垃圾！", "物流垃圾，早上就到了网点到第二天还不派送，找了几次客服说帮催促就是不解决，还是找的官方客服立马送了，网页显示下单就送氨糖软骨素贴也没有送。", "吃这个药已经吃了好几年了，之前在实体店买的很贵，这一次相信阿里在网上买了，希望是真的不会给我失望，因为优惠太多钱了", "下单之前我联系客服了，问是不是仿制药，客服回答我说不是仿制药，现在我收到货了，是仿制药，，客服说的话都是骗人的", "吃了一段时间，一点用也没有，反而感觉比没有吃还要痛点，客服说，有关节润滑作用，被上当受骗了。直接垃圾桶。", "吃你家氨糖两年了，这次送了一个水杯，本来还挺高兴的，但是今天让我失望了，水杯密封不严，包里东西都湿了"]}};
+const COLOR = { good: '#22c55e', mid: '#f59e0b', bad: '#ef4444', template: '#cbd5e1', primary: '#6d5ef7', purple: '#a855f7' };
+const charts = {};
+const rendered = {};
+
+/* ---------- 工具 ---------- */
+function $(id) { return document.getElementById(id); }
+function renderChart(id, option) {
+  if (!rendered[id]) { charts[id] = echarts.init($(id)); rendered[id] = true; }
+  charts[id].setOption(option);
+}
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function trunc(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; }
+
+/* ---------- Tab 切换：首次显示才渲染，之后 resize ---------- */
+function switchPage(name, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  $('page-' + name).classList.add('active');
+  const page = $('page-' + name);
+  page.querySelectorAll('[data-chart]').forEach(c => renderChart(c.id, OPTIONS[c.id]()));
+  // 只 resize 当前页可见图表（隐藏页容器宽度为0，resize 会把 canvas 压扁成 125px，切勿全局 resize）
+  page.querySelectorAll('[data-chart]').forEach(c => charts[c.id] && charts[c.id].resize());
+}
+
+/* ---------- 各图表配置 ---------- */
+const OPTIONS = {};
+
+/* ============ 页1 总览 ============ */
+OPTIONS['ov-pie'] = function () {
+  const pie = DATA.sentiment_pie;
+  return {
+    color: [COLOR.good, COLOR.mid, COLOR.bad, COLOR.template],
+    tooltip: { trigger: 'item', formatter: p => p.name + '：' + p.value + ' 条（' + p.percent + '%）' },
+    legend: { bottom: 0, textStyle: { fontSize: 12 } },
+    series: [{
+      type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'],
+      itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
+      label: { formatter: '{b}\n{d}%', fontSize: 11 },
+      data: pie
+    }]
+  };
+};
+OPTIONS['ov-trend'] = function () {
+  const m = DATA.monthly;
+  const months = m.map(x => x.month.slice(0, 7));
+  return {
+    color: [COLOR.primary, COLOR.purple],
+    tooltip: { trigger: 'axis' },
+    legend: { top: 0, data: ['评论数', '真实好评率'] },
+    grid: { left: 50, right: 50, top: 36, bottom: 28 },
+    xAxis: { type: 'category', data: months, axisLabel: { fontSize: 10, interval: 2 } },
+    yAxis: [
+      { type: 'value', name: '条数', axisLabel: { fontSize: 10 } },
+      { type: 'value', name: '好评率%', min: 80, max: 102, axisLabel: { fontSize: 10 }, splitLine: { show: false } }
+    ],
+    series: [
+      { name: '评论数', type: 'bar', data: m.map(x => x.count), barWidth: '55%',
+        itemStyle: { borderRadius: [4, 4, 0, 0], color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [{ offset: 0, color: '#8b5cf6' }, { offset: 1, color: '#c4b5fd' }] } } },
+      { name: '真实好评率', type: 'line', yAxisIndex: 1, data: m.map(x => x.real_rate),
+        smooth: true, symbolSize: 5, lineStyle: { width: 2.5 },
+        areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [{ offset: 0, color: 'rgba(109,94,247,.25)' }, { offset: 1, color: 'rgba(109,94,247,.02)' }] } } }
+    ]
+  };
+};
+OPTIONS['ov-good-theme'] = function () {
+  const t = DATA.good_themes.slice(0, 8).slice().reverse();
+  return {
+    tooltip: { trigger: 'axis', formatter: p => p[0].name + '：' + p[0].value + ' 条' },
+    grid: { left: 70, right: 30, top: 10, bottom: 24 },
+    xAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+    yAxis: { type: 'category', data: t.map(x => x.theme), axisLabel: { fontSize: 12 } },
+    series: [{
+      type: 'bar', data: t.map(x => x.count), barWidth: '58%',
+      label: { show: true, position: 'right', fontSize: 11 },
+      itemStyle: { borderRadius: [0, 6, 6, 0], color: { type: 'linear', x: 0, y: 0, x2: 1, y2: 0,
+        colorStops: [{ offset: 0, color: '#6d5ef7' }, { offset: 1, color: '#a855f7' }] } }
+    }]
+  };
+};
+OPTIONS['ov-bad-reason'] = function () {
+  const t = DATA.bad_reasons.slice(0, 7).slice().reverse();
+  return {
+    tooltip: { trigger: 'axis', formatter: p => p[0].name + '：' + p[0].value + ' 条' },
+    grid: { left: 70, right: 30, top: 10, bottom: 24 },
+    xAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+    yAxis: { type: 'category', data: t.map(x => x.reason), axisLabel: { fontSize: 12 } },
+    series: [{
+      type: 'bar', data: t.map(x => x.count), barWidth: '58%',
+      label: { show: true, position: 'right', fontSize: 11 },
+      itemStyle: { borderRadius: [0, 6, 6, 0], color: { type: 'linear', x: 0, y: 0, x2: 1, y2: 0,
+        colorStops: [{ offset: 0, color: '#f59e0b' }, { offset: 1, color: '#ef4444' }] } }
+    }]
+  };
+};
+
+/* ============ 页2 情感分析 ============ */
+OPTIONS['sn-wc-good'] = function () {
+  return {
+    tooltip: { formatter: p => p.name + '：' + p.value + ' 次' },
+    series: [{
+      type: 'wordCloud', shape: 'circle', width: '96%', height: '92%',
+      sizeRange: [14, 64], rotationRange: [0, 0], gridSize: 6,
+      drawOutOfBound: false, textStyle: { fontWeight: 600 },
+      emphasis: { textStyle: { color: '#6d5ef7' } },
+      data: DATA.wordcloud.good
+    }]
+  };
+};
+OPTIONS['sn-wc-bad'] = function () {
+  return {
+    tooltip: { formatter: p => p.name + '：' + p.value + ' 次' },
+    series: [{
+      type: 'wordCloud', shape: 'circle', width: '96%', height: '92%',
+      sizeRange: [14, 56], rotationRange: [0, 0], gridSize: 6,
+      drawOutOfBound: false, textStyle: { fontWeight: 600, color: '#ef4444' },
+      emphasis: { textStyle: { color: '#7f1d1d' } },
+      data: DATA.wordcloud.bad
+    }]
+  };
+};
+
+/* ============ 页3 商品维度 ============ */
+OPTIONS['sku-dist'] = function () {
+  const d = DATA.sku_dist;
+  return {
+    tooltip: { trigger: 'axis', formatter: p => p[0].name + '：' + p[0].value + ' 条' },
+    grid: { left: 60, right: 30, top: 10, bottom: 24 },
+    xAxis: { type: 'category', data: d.map(x => x.name), axisLabel: { fontSize: 12 } },
+    yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+    series: [{
+      type: 'bar', data: d.map(x => x.value), barWidth: '50%',
+      label: { show: true, position: 'top', fontSize: 11 },
+      itemStyle: { borderRadius: [6, 6, 0, 0], color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+        colorStops: [{ offset: 0, color: '#6d5ef7' }, { offset: 1, color: '#a78bfa' }] } }
+    }]
+  };
+};
+OPTIONS['sku-heat'] = function () {
+  const h = DATA.sku_heat;
+  const maxV = Math.max(...h.matrix.flat());
+  return {
+    tooltip: { formatter: p => h.skus[p.value[0]] + ' × ' + h.types[p.value[1]] + '：' + p.value[2] + ' 条' },
+    grid: { left: 90, right: 30, top: 30, bottom: 50 },
+    xAxis: { type: 'category', data: h.skus, splitArea: { show: true }, axisLabel: { fontSize: 12 } },
+    yAxis: { type: 'category', data: h.types, splitArea: { show: true }, axisLabel: { fontSize: 12 } },
+    visualMap: {
+      min: 0, max: maxV, calculable: false, orient: 'horizontal', left: 'center', bottom: 4,
+      inRange: { color: ['#ede9fe', '#a78bfa', '#6d5ef7', '#4338ca'] }, textStyle: { fontSize: 10 }
+    },
+    series: [{
+      type: 'heatmap', data: h.matrix.flatMap((row, i) => row.map((v, j) => [i, j, v])),
+      label: { show: true, fontSize: 10 }, itemStyle: { borderColor: '#fff', borderWidth: 2, borderRadius: 4 },
+      emphasis: { itemStyle: { shadowBlur: 8, shadowColor: 'rgba(0,0,0,.2)' } }
+    }]
+  };
+};
+OPTIONS['sku-promo'] = function () {
+  const d = DATA.promo.slice(0, 8).slice().reverse();
+  return {
+    tooltip: { trigger: 'axis', formatter: p => p[0].name + '：' + p[0].value + ' 条' },
+    grid: { left: 90, right: 30, top: 10, bottom: 24 },
+    xAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+    yAxis: { type: 'category', data: d.map(x => x.name), axisLabel: { fontSize: 11 } },
+    series: [{
+      type: 'bar', data: d.map(x => x.value), barWidth: '58%',
+      label: { show: true, position: 'right', fontSize: 11 },
+      itemStyle: { borderRadius: [0, 6, 6, 0], color: { type: 'linear', x: 0, y: 0, x2: 1, y2: 0,
+        colorStops: [{ offset: 0, color: '#8b5cf6' }, { offset: 1, color: '#38bdf8' }] } }
+    }]
+  };
+};
+
+/* ============ 页4 时间维度 ============ */
+OPTIONS['tm-stack'] = function () {
+  const m = DATA.monthly;
+  const months = m.map(x => x.month.slice(0, 7));
+  return {
+    color: [COLOR.template, COLOR.good, COLOR.mid, COLOR.bad],
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    legend: { top: 0, data: ['模板好评', '真实好评', '中评', '差评'] },
+    grid: { left: 50, right: 20, top: 36, bottom: 28 },
+    xAxis: { type: 'category', data: months, axisLabel: { fontSize: 10, interval: 2 } },
+    yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+    series: [
+      { name: '模板好评', type: 'bar', stack: 't', data: m.map(x => x.template), itemStyle: { color: '#cbd5e1' } },
+      { name: '真实好评', type: 'bar', stack: 't', data: m.map(x => x.good), itemStyle: { color: '#22c55e' } },
+      { name: '中评', type: 'bar', stack: 't', data: m.map(x => x.mid), itemStyle: { color: '#f59e0b' } },
+      { name: '差评', type: 'bar', stack: 't', data: m.map(x => x.bad), itemStyle: { color: '#ef4444' } }
+    ]
+  };
+};
+OPTIONS['tm-rate'] = function () {
+  const m = DATA.monthly;
+  const months = m.map(x => x.month.slice(0, 7));
+  const rates = m.map(x => x.real_rate);
+  const avg = rates.filter(r => r != null).reduce((a, b) => a + b, 0) / rates.filter(r => r != null).length;
+  return {
+    tooltip: { trigger: 'axis', formatter: p => p[0].name + '<br/>真实好评率：' + (p[0].value ?? '-') + '%' },
+    grid: { left: 50, right: 20, top: 30, bottom: 28 },
+    xAxis: { type: 'category', data: months, axisLabel: { fontSize: 10, interval: 2 } },
+    yAxis: { type: 'value', min: 85, max: 102, axisLabel: { fontSize: 10, formatter: '{value}%' } },
+    series: [{
+      type: 'line', data: rates, smooth: true, symbolSize: 6,
+      lineStyle: { width: 2.5, color: '#6d5ef7' }, itemStyle: { color: '#6d5ef7' },
+      areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+        colorStops: [{ offset: 0, color: 'rgba(109,94,247,.3)' }, { offset: 1, color: 'rgba(109,94,247,.03)' }] } },
+      markLine: { data: [{ yAxis: avg, name: '两年平均' }], lineStyle: { color: '#a855f7', type: 'dashed' },
+        label: { formatter: '平均 ' + avg.toFixed(1) + '%', fontSize: 10 } }
+    }]
+  };
+};
+OPTIONS['tm-weekday'] = function () {
+  const d = DATA.weekday;
+  return {
+    tooltip: { trigger: 'axis', formatter: p => p[0].name + '：' + p[0].value + ' 条' },
+    grid: { left: 45, right: 20, top: 30, bottom: 24 },
+    xAxis: { type: 'category', data: d.map(x => x.name), axisLabel: { fontSize: 12 } },
+    yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+    series: [{
+      type: 'bar', data: d.map(x => x.value), barWidth: '50%',
+      itemStyle: { borderRadius: [6, 6, 0, 0], color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+        colorStops: [{ offset: 0, color: '#8b5cf6' }, { offset: 1, color: '#c4b5fd' }] } }
+    }]
+  };
+};
+OPTIONS['tm-rep'] = function () {
+  const m = DATA.repurchase.trend;
+  const months = m.map(x => x.month.slice(0, 7));
+  return {
+    tooltip: { trigger: 'axis', formatter: p => p[0].name + '：' + p[0].value + ' 条' },
+    grid: { left: 45, right: 20, top: 30, bottom: 28 },
+    xAxis: { type: 'category', data: months, axisLabel: { fontSize: 10, interval: 2 } },
+    yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+    series: [{
+      type: 'bar', data: m.map(x => x.count), barWidth: '55%',
+      itemStyle: { borderRadius: [6, 6, 0, 0], color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+        colorStops: [{ offset: 0, color: '#6d5ef7' }, { offset: 1, color: '#a78bfa' }] } }
+    }]
+  };
+};
+
+/* ============ 页5 用户画像 ============ */
+OPTIONS['pt-spec'] = function () {
+  const d = DATA.portrait.spec_type;
+  return {
+    color: ['#6d5ef7', '#a855f7', '#38bdf8'],
+    tooltip: { trigger: 'item', formatter: p => p.name + '：' + p.value + ' 条（' + p.percent + '%）' },
+    legend: { bottom: 0, textStyle: { fontSize: 11 } },
+    series: [{
+      type: 'pie', radius: ['40%', '66%'], center: ['50%', '44%'],
+      itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
+      label: { formatter: '{b}\n{d}%', fontSize: 11 }, data: d
+    }]
+  };
+};
+OPTIONS['pt-scene'] = function () {
+  const d = DATA.portrait.scene.slice().reverse();
+  return {
+    tooltip: { trigger: 'axis', formatter: p => p[0].name + '：' + p[0].value + ' 条' },
+    grid: { left: 80, right: 30, top: 10, bottom: 24 },
+    xAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+    yAxis: { type: 'category', data: d.map(x => x.name), axisLabel: { fontSize: 12 } },
+    series: [{
+      type: 'bar', data: d.map(x => x.count), barWidth: '52%',
+      label: { show: true, position: 'right', fontSize: 11 },
+      itemStyle: { borderRadius: [0, 6, 6, 0], color: { type: 'linear', x: 0, y: 0, x2: 1, y2: 0,
+        colorStops: [{ offset: 0, color: '#6d5ef7' }, { offset: 1, color: '#38bdf8' }] } }
+    }]
+  };
+};
+OPTIONS['pt-focus'] = function () {
+  const d = DATA.portrait.focus;
+  return {
+    color: ['#6d5ef7', '#a855f7', '#38bdf8', '#22c55e'],
+    tooltip: { trigger: 'item', formatter: p => p.name + '：' + p.value + ' 条（' + p.percent + '%）' },
+    legend: { bottom: 0, textStyle: { fontSize: 11 } },
+    series: [{
+      type: 'pie', radius: ['38%', '64%'], center: ['50%', '44%'],
+      itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
+      label: { formatter: '{b}\n{d}%', fontSize: 10.5 },
+      // 注意：饼图 data 需要 {name, value}，portrait.focus 字段是 count，需转换
+      data: d.map(x => ({ name: x.name, value: x.count }))
+    }]
+  };
+};
+
+/* ---------- 表格渲染 ---------- */
+function renderGoodTable() {
+  const rows = DATA.good_themes.map(t => `
+    <tr><td><b>${t.theme}</b></td><td>${t.count} 条</td><td>${t.rate}%</td>
+    <td class="sample">${esc(trunc(t.samples[0] || '—', 60))}</td></tr>`).join('');
+  $('sn-good-table').innerHTML = `<table class="ov-table">
+    <tr><th>好评点</th><th>命中数</th><th>命中率</th><th>代表评论</th></tr>${rows}</table>`;
+}
+function renderBadTable() {
+  const rows = DATA.bad_reasons.map(t => `
+    <tr><td><b>${t.reason}</b></td><td>${t.count} 条</td><td>${t.rate}%</td>
+    <td class="sample">${esc(trunc(t.samples[0] || '—', 60))}</td></tr>`).join('');
+  $('sn-bad-table').innerHTML = `<table class="ov-table">
+    <tr><th>差评点</th><th>命中数</th><th>占比</th><th>代表评论</th></tr>${rows}</table>`;
+}
+function renderSkuRateTable() {
+  const rows = DATA.sku_rate.map(s => `
+    <tr><td><b>${s.sku}</b></td><td>${s.total} 条</td>
+    <td>${s.real_rate}%</td><td>${s.bad_n > 0 ? '<span class="badge bad">' + s.bad_n + ' 条</span>' : '<span class="badge good">0</span>'}</td></tr>`).join('');
+  $('sku-rate-table').innerHTML = `<table class="ov-table">
+    <tr><th>规格</th><th>评论数</th><th>真实好评率</th><th>差评数</th></tr>${rows}</table>`;
+}
+function renderCooccur() {
+  const items = DATA.cooccur.length
+    ? DATA.cooccur.map(c => `<div class="review-item">⚡ <span class="badge info">${c.good}</span> 与 <span class="badge bad">${c.bad}</span> 同现 <b>${c.count}</b> 次 —— 体验中的"加分项 + 扣分项"组合</div>`).join('')
+    : '<div class="empty-hint">负面评论中暂无明显矛盾组合</div>';
+  $('sn-cooccur').innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">${items}</div>`;
+}
+function renderSceneSamples() {
+  const cards = DATA.portrait.scene.map(s => `
+    <div class="review-item"><div class="meta"><span class="badge info">${s.name}</span> 共 ${s.count} 条</div>
+    ${esc(trunc(s.samples[0] || '—', 70))}</div>`).join('');
+  $('pt-scene-samples').innerHTML = `<div class="review-list">${cards}</div>`;
+}
+function renderRepSamples() {
+  const items = DATA.repurchase.samples.map(t => `<div class="review-item">🔁 ${esc(trunc(t, 70))}</div>`).join('');
+  $('pt-rep-samples').innerHTML = `<div class="review-list">${items}</div>`;
+}
+
+/* ---------- 洞察文本 ---------- */
+function renderInsights() {
+  const k = DATA.kpi;
+  const gt = DATA.good_themes[0];
+  const br = DATA.bad_reasons[0];
+  const skuBest = DATA.sku_rate.slice().sort((a, b) => b.real_rate - a.real_rate)[0];
+  const skuWorst = DATA.sku_rate.slice().sort((a, b) => a.real_rate - b.real_rate)[0];
+  const sceneTop = DATA.portrait.scene[0];
+  $('ov-insights').innerHTML = `<strong>核心结论：</strong>
+   ① 产品口碑扎实：真实好评率 <strong>${k.real_good_rate}%</strong>（${k.good} 条真实好评 / ${k.real_total} 条有内容评论）；
+   ② 口碑主要由「<strong>${gt.theme}</strong>」驱动（命中 ${gt.count} 条），买家最看重效果与正品保障；
+   ③ 需警惕点：中差评合计 ${k.mid + k.bad} 条，首要问题是「<strong>${br.reason}</strong>」（${br.count} 条）；
+   ④ 规格维度：<strong>${skuBest.sku}</strong> 真实好评率最高（${skuBest.real_rate}%），<strong>${skuWorst.sku}</strong> 相对最低（${skuWorst.real_rate}%，差评 ${skuWorst.bad_n} 条）；
+   ⑤ 典型购买动机是「<strong>${sceneTop.name}</strong>」（${sceneTop.count} 条提及），购买决策与关节健康需求强相关。`;
+  $('tm-insights').innerHTML = `<strong>时间维度洞察：</strong>
+   ① 评论量呈现明显的大促脉冲：<strong>2026-06（618）</strong>单月 338 条为峰值，其次 2026-05 / 2026-03；
+   ② 真实好评率两年均值稳定在 <strong>${k.real_good_rate}%</strong> 上下，未出现口碑恶化拐点；
+   ③ 差评在 <strong>2025-11、2025-09、2026-03、2026-08</strong> 有零星出现，量级小且不连续，暂无批次性质量问题信号；
+   ④ 评价活跃度周一最高、周末次之，与"收货后即评"习惯吻合。`;
+  const specPct = (v) => Math.round(v / DATA.kpi.total * 100);
+  $('pt-insights').innerHTML = `<strong>用户画像总结：</strong>
+   ① 规格偏好：<strong>标准疗程型（2-3盒）</strong>占比最高（${specPct(2394)}%），其次尝鲜型 1盒（${specPct(1626)}%）——购买决策偏向"先试后囤"；
+   ② 购买场景：<strong>${sceneTop.name}</strong> 是最大动机（${sceneTop.count} 条提及，占真实评论 ${Math.round(sceneTop.count / DATA.kpi.real_total * 100)}%），人群画像偏向中老年关节不适人群及其子女；
+   ③ 关注点：<strong>${DATA.portrait.focus[0].name}</strong> 为主（${DATA.portrait.focus[0].count} 条），价格敏感型次之——投放与详情页应主攻"效果"，次打"性价比"；
+   ④ 复购信号 ${k.repurchase} 条（占真实评论 ${Math.round(k.repurchase / k.real_total * 100)}%），存在稳定回头客，值得做会员/周期购运营。`;
+}
+
+/* ---------- KPI 填充 ---------- */
+function fillKpi() {
+  const k = DATA.kpi;
+  $('kpi-total').textContent = k.total;
+  $('kpi-good-rate').textContent = k.real_good_rate;
+  $('kpi-tpl').textContent = k.template;
+  $('kpi-tpl-rate').textContent = k.template_rate + '%';
+  $('kpi-mid').textContent = k.mid;
+  $('kpi-bad').textContent = k.bad;
+  $('kpi-rep').textContent = k.repurchase;
+  $('sku-k-spec').textContent = DATA.sku_dist.length;
+  $('sku-k-top').textContent = DATA.sku_dist[0].name;
+  const best = DATA.sku_rate.slice().sort((a, b) => b.real_rate - a.real_rate)[0];
+  const worst = DATA.sku_rate.slice().sort((a, b) => a.real_rate - b.real_rate)[0];
+  $('sku-k-best').textContent = best.sku + '（' + best.real_rate + '%）';
+  $('sku-k-worst').textContent = worst.sku + '（差评 ' + worst.bad_n + ' 条）';
+}
+
+/* ---------- 启动 ---------- */
+fillKpi();
+renderGoodTable(); renderBadTable(); renderSkuRateTable(); renderCooccur();
+renderSceneSamples(); renderRepSamples(); renderInsights();
+// 首次渲染当前页（总览）图表
+document.querySelectorAll('#page-overview [data-chart]').forEach(c => renderChart(c.id, OPTIONS[c.id]()));
+</script>
+</body>
+</html>
